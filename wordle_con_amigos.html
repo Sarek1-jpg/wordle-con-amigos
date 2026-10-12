@@ -1,0 +1,97 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Wordle con amigos</title>
+<script src="https://unpkg.com/peerjs@1.5.4/dist/peerjs.min.js"></script>
+<style>
+:root{--bg:#121213;--panel:#1d1d1f;--text:#f8f8f8;--muted:#aaa;--border:#3a3a3c;--green:#538d4e;--yellow:#b59f3b;--gray:#3a3a3c;--accent:#7c6cff}
+*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--text);font-family:Arial,Helvetica,sans-serif;min-height:100vh}
+header{border-bottom:1px solid var(--border);text-align:center;padding:17px 12px}h1{margin:0;font-size:clamp(24px,4vw,34px);letter-spacing:2px}header p{color:var(--muted);margin:7px 0 0;font-size:13px}
+main{max-width:1100px;margin:auto;padding:18px 14px 36px}.setup{max-width:580px;margin:0 auto 20px;background:var(--panel);padding:16px;border:1px solid var(--border);border-radius:12px}
+.row{display:flex;gap:8px;flex-wrap:wrap}.row>*{flex:1;min-width:130px}input,button{font:inherit;border-radius:7px;padding:11px 12px;border:1px solid var(--border)}input{background:#111;color:white;min-width:0}button{background:var(--accent);color:white;border:0;font-weight:bold;cursor:pointer}button.secondary{background:#333}button:disabled{opacity:.45;cursor:not-allowed}.status{font-size:13px;color:var(--muted);margin:12px 0 0;overflow-wrap:anywhere}.roomcode{font-weight:bold;color:#c7c0ff;letter-spacing:1px}.gamebar{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;margin:12px 0 20px}.gamebar .muted{color:var(--muted);font-size:13px}.boards{display:grid;grid-template-columns:repeat(auto-fit,minmax(245px,1fr));gap:18px;align-items:start}.player{background:var(--panel);border:1px solid var(--border);border-radius:12px;padding:14px;min-width:0}.player h2{font-size:16px;margin:0 0 12px;display:flex;justify-content:space-between;gap:8px}.you{font-size:11px;color:#c7c0ff;font-weight:normal}.board{display:grid;grid-template-rows:repeat(6,1fr);gap:5px;width:min(100%,250px);margin:0 auto}.boardrow{display:grid;grid-template-columns:repeat(5,1fr);gap:5px}.tile{aspect-ratio:1;border:2px solid #3a3a3c;background:transparent;display:flex;align-items:center;justify-content:center;font-weight:bold;font-size:clamp(14px,3vw,20px);text-transform:uppercase}.tile.filled{border-color:#777}.tile.correct{background:var(--green);border-color:var(--green)}.tile.present{background:var(--yellow);border-color:var(--yellow)}.tile.absent{background:var(--gray);border-color:var(--gray)}.tile.hiddenletter{color:transparent;text-shadow:none}.playerfoot{text-align:center;color:var(--muted);font-size:12px;margin-top:10px;min-height:16px}.playarea{max-width:580px;margin:22px auto 0;text-align:center}.message{min-height:22px;color:#f0d77b;font-size:14px;margin:10px 0}.guessrow{display:flex;gap:8px}.guessrow input{text-transform:uppercase;text-align:center;font-weight:bold;letter-spacing:3px;font-size:18px}.guessrow button{min-width:100px}.note{font-size:12px;color:var(--muted);line-height:1.5;margin-top:14px}.hidden{display:none!important}.pill{display:inline-block;border:1px solid var(--border);border-radius:999px;padding:5px 9px;color:var(--muted);font-size:12px}
+@media(max-width:520px){main{padding:12px 9px 26px}.player{padding:10px}.boards{grid-template-columns:1fr 1fr;gap:9px}.player h2{font-size:13px}.board{gap:3px}.boardrow{gap:3px}.tile{border-width:1px}.guessrow button{min-width:82px;padding:10px 8px}}
+</style>
+</head>
+<body>
+<header><h1>WORDLE CON AMIGOS</h1><p>5 letras · 6 intentos · palabras nuevas sin límite</p></header>
+<main>
+<section class="setup" id="setup">
+  <div class="row">
+    <button id="createBtn">Crear sala (host)</button>
+    <input id="roomInput" placeholder="Código de la sala" maxlength="40" autocomplete="off">
+    <button class="secondary" id="joinBtn">Unirme</button>
+  </div>
+  <p class="status" id="status">Crea una sala y comparte el código con tus amigos. Todos deben tener esta página abierta.</p>
+  <p class="status hidden" id="roomInfo"></p>
+</section>
+<div id="game" class="hidden">
+  <div class="gamebar"><div><strong id="roundLabel">Ronda 1</strong> <span class="pill" id="connectionLabel">Conectando…</span><div class="muted" id="roundInfo">Adivina la palabra</div></div><button class="secondary" id="copyBtn">Copiar código de sala</button></div>
+  <div class="boards" id="boards"></div>
+  <section class="playarea">
+    <div class="guessrow"><input id="guessInput" maxlength="5" placeholder="PALABRA" autocomplete="off" aria-label="Tu intento"><button id="guessBtn">Probar</button></div>
+    <div class="message" id="message"></div>
+    <button class="secondary hidden" id="nextBtn">Siguiente palabra</button>
+    <p class="note">Los tableros de tus amigos muestran solo los colores, sin revelar sus letras. Verde = letra y posición correctas; amarillo = letra en otra posición; gris = no está en la palabra.</p>
+  </section>
+</div>
+</main>
+<script>
+(() => {
+const WORDS = [...new Set(("abeja abono abrir abuso acero actor actriz adulto adios adorn altar amigo ancho andar angel animo ancla antes arena arcoí arcoa ardor arroz astro atajo avion ayuda aviso azul barco barrio basta beber bello beso bicho bilis blusa bolsa borrar brazo breve brillo broca broma bruja bueno burro buscar cable cacao caer caja caldo calma calor campo canal canas capaz carga carne carta casa casar casco causa cebar cejas celda cenar cerca cerdo cereal cerro cesta chico chivo cielo cinco cinta circo claro clase clave clima cloro coche coco coger color comer comic como conejo copia coraje corona correr corto cosa costa crema cruce cuadro cuarto cuenta cuerda cuero culpa curva danza datos deber decir dedo dejar denso deseo desde dulce durar echar edad editar efecto elegir elote ellas ellos email emitir entrar enviar error estar etapa evitar exacto exito extra facil falso falta feliz feria feroz fibra fiesta final firme flaco flores flota foco forma frase freir fruta fuego fuente fuerte ganar gasto gente gesto girar globo golpe gordo gorra grano grasa gratis grave grupo guapo guiar gusto hablar hacer hacha hallar hasta hebra hecho helar hielo hierba hogar hojas honor horno hotel huella huevo humor ideal igual isla jamás jaula joven jugar justo labor ladrar lagos largo leche leer lento letra libro libre listo llave llenar llevar lluvia lograr lucha lugar lunes madre magia mango manos manta marco marido marzo matar mayor media mejor menos mente metal meter metro miedo mirar mismo mitad moda molde monte moral morir mosca mover mucho mujer mundo musgo música nacer nadie nariz natal navío negar negro nervio nieve nivel noble noche novio nueve nuevo obeso obra obrar ochos ocupar oferta oírse oliva once optar orden oreja oruga padre pagar palco papel parar pared pares parte pasar paseo pasta patas patio pausa pecar pecho pedir pegar pelea pelo penal pensar perla perro pesar pieza pilar pintar pisar pista placa plaga plano plata playa plaza pleno pobre poder poner porra porta prado presa primo probar punto queso quitar rabia radio rama rango rapto rasgo raton razón realista recto regla reino reírse resto ritmo robot roble rocas rodar rojo rosca rubio rueda ruido rumbo saber sabio sacar salsa salto salud salvar santo seco sello selva señor serie serio servir signo silla sitio sobre socio soler sonar sordo suerte subir sudar sueño suelo suero sumar tabla tacto talón taller tambo tapar tarde tarea taza tecla temor tener tenis terco texto tigre tinta tirar tocar tomar tono tonto torre tosco traje tramo trapo trato traer trece trenes trigo triste trompo truco tumba turno ubica unido unirlo usada usado usted vacas vacío valer valor vapor variar varios vaso vasto velar veloz vender venir venta verbo verde verso vestir viajar viejo vidrio vigía vigor villa virus vista vital vivir vocal volar volver votos yacer yegua yerno yerto yogur zafio zanja zarpa zorro").toUpperCase().normalize("NFD").replace(/[\u0300-\u036f]/g,"").split(/\s+/).filter(w=>/^[A-ZÑ]{5}$/.test(w)))];
+const $ = id => document.getElementById(id);
+let peer=null, isHost=false, roomId="", myId="", hostConn=null, conns=new Map(), players=new Map(), round=1, answer="", roundOver=false, started=false;
+const newId=()=>Math.random().toString(36).slice(2,7).toUpperCase();
+const cleanWord=s=>s.toUpperCase().normalize("NFD").replace(/[\u0300-\u036f]/g,"").replace(/[^A-ZÑ]/g,"");
+function pickWord(){return WORDS[Math.floor(Math.random()*WORDS.length)]}
+function say(s){$("status").textContent=s}
+function setConnection(s){$("connectionLabel").textContent=s}
+function makePlayer(id,name){return {id,name,guesses:[],colors:[],done:false,won:false}}
+function initGame(){started=true;$("setup").classList.add("hidden");$("game").classList.remove("hidden");render();syncStatus();$("guessInput").focus()}
+function createPeer(id){return new Promise((resolve,reject)=>{peer=new Peer(id);peer.on("open",id=>{myId=id;resolve(id)});peer.on("error",e=>reject(e));peer.on("disconnected",()=>setConnection("Reconectando…"));peer.on("close",()=>setConnection("Desconectado"));})}
+async function createRoom(){
+ $("createBtn").disabled=true;
+ try{isHost=true;await createPeer();roomId=myId;answer=pickWord();round=1;players.clear();players.set(myId,{...makePlayer(myId,"Jugador 1"),isSelf:true});initGame();$("roomInfo").classList.remove("hidden");$("roomInfo").innerHTML='Código de sala: <span class="roomcode">'+roomId+'</span> — compártelo con tus amigos.';setConnection("Host");peer.on("connection",conn=>{conns.set(conn.peer,conn);conn.on("open",()=>{const n=players.size+1;players.set(conn.peer,makePlayer(conn.peer,"Jugador "+n));conn.send({type:"welcome",roomId,round,answer,players:serializePlayers(),roundOver});broadcast();render()});conn.on("data",msg=>handleHostMessage(conn,msg));conn.on("close",()=>{conns.delete(conn.peer);players.delete(conn.peer);broadcast();render()})});}
+ catch(e){say("No se pudo crear la sala. Comprueba tu conexión e inténtalo de nuevo.");isHost=false;$("createBtn").disabled=false}
+}
+async function joinRoom(){
+ const id=$("roomInput").value.trim();if(!id){say("Escribe el código de sala que te compartió el host.");return}
+ $("joinBtn").disabled=true;say("Conectando a la sala…");
+ try{await createPeer();hostConn=peer.connect(id,{reliable:true});roomId=id;hostConn.on("open",()=>{hostConn.send({type:"join"});setConnection("Conectado al host")});hostConn.on("data",msg=>handleGuestMessage(msg));hostConn.on("close",()=>{setConnection("Se perdió la conexión con el host");$("guessBtn").disabled=true});hostConn.on("error",()=>say("No se pudo conectar. Revisa el código de sala."));}
+ catch(e){say("No se pudo conectar. Comprueba tu conexión y el código.");$("joinBtn").disabled=false}
+}
+function serializePlayers(){return [...players.values()].map(p=>({...p,colors:[...p.colors],guesses:[...p.guesses]}))}
+function broadcast(){const packet={type:"state",round,players:serializePlayers(),roundOver};for(const c of conns.values())if(c.open)c.send(packet);render()}
+function handleHostMessage(conn,msg){if(!msg||!msg.type)return;
+ if(msg.type==="join"){if(!players.has(conn.peer)){players.set(conn.peer,makePlayer(conn.peer,"Jugador "+players.size));conn.send({type:"welcome",roomId,round,answer,players:serializePlayers(),roundOver});broadcast()}}
+ if(msg.type==="guess"){const p=players.get(conn.peer);if(p&&!roundOver)submitGuess(p,msg.word,true)}
+ if(msg.type==="next"&&isHost&&roundOver)nextRound();
+}
+function handleGuestMessage(msg){if(!msg)return;
+ if(msg.type==="welcome"){roomId=msg.roomId;round=msg.round;answer=msg.answer;roundOver=msg.roundOver;players=new Map(msg.players.map(p=>[p.id,p]));myId=peer.id;players.set(myId,makePlayer(myId,"Tú"));initGame();setConnection("Conectado");}
+ if(msg.type==="state"){round=msg.round;roundOver=msg.roundOver;players=new Map(msg.players.map(p=>[p.id,p]));render();syncStatus()}
+ if(msg.type==="round"){round=msg.round;answer=msg.answer;roundOver=false;players=new Map(msg.players.map(p=>[p.id,p]));render();syncStatus()}
+}
+function score(guess,target){let g=Array(5).fill("absent"),used=Array(5).fill(false);for(let i=0;i<5;i++)if(guess[i]===target[i]){g[i]="correct";used[i]=true}for(let i=0;i<5;i++)if(g[i]!=="correct"){for(let j=0;j<5;j++)if(!used[j]&&guess[i]===target[j]){g[i]="present";used[j]=true;break}}return g}
+function submitGuess(p,word,fromNetwork=false){word=cleanWord(word);if(word.length!==5){if(p.id===myId)$("message").textContent="Escribe una palabra de 5 letras.";return}if(p.guesses.length>=6||p.done||roundOver)return;
+ p.guesses.push(word);p.colors.push(score(word,answer));if(word===answer){p.done=true;p.won=true}else if(p.guesses.length===6)p.done=true;
+ if(p.id===myId){$("guessInput").value="";$("message").textContent=p.won?"¡Lo lograste!":p.done?"Se acabaron tus intentos.":"Intento registrado."}
+ if(isHost){if([...players.values()].every(x=>x.done)){roundOver=true}broadcast()}else if(!fromNetwork&&hostConn&&hostConn.open){hostConn.send({type:"guess",word});}
+}
+function nextRound(){if(!isHost)return;round++;answer=pickWord();roundOver=false;for(const p of players.values()){p.guesses=[];p.colors=[];p.done=false;p.won=false}const packet={type:"round",round,answer,players:serializePlayers()};for(const c of conns.values())if(c.open)c.send(packet);render();syncStatus();$("message").textContent="";$("nextBtn").classList.add("hidden");}
+function render(){if(!started)return;$("roundLabel").textContent="Ronda "+round;$("boards").innerHTML="";for(const p of players.values()){
+ const card=document.createElement("section");card.className="player";const h=document.createElement("h2");h.textContent=p.name||"Jugador";if(p.id===myId){const y=document.createElement("span");y.className="you";y.textContent="TÚ";h.appendChild(y)}card.appendChild(h);
+ const board=document.createElement("div");board.className="board";
+ for(let r=0;r<6;r++){const row=document.createElement("div");row.className="boardrow";for(let c=0;c<5;c++){const tile=document.createElement("div");tile.className="tile";const guess=p.guesses?.[r],colors=p.colors?.[r];if(guess){tile.classList.add(colors?.[c]||"absent");if(p.id===myId)tile.textContent=guess[c];else tile.classList.add("hiddenletter")}row.appendChild(tile)}board.appendChild(row)}card.appendChild(board);
+ const foot=document.createElement("div");foot.className="playerfoot";foot.textContent=p.done?(p.won?"¡Acertó!":"Terminó sus intentos"):((p.guesses?.length||0)+"/6 intentos");card.appendChild(foot);$("boards").appendChild(card)}
+ $("guessBtn").disabled=roundOver||!!players.get(myId)?.done;$("guessInput").disabled=$("guessBtn").disabled;
+ if(roundOver){$("roundInfo").textContent="¡Ronda terminada! La palabra era "+answer;$("nextBtn").classList.toggle("hidden",!isHost);$("message").textContent="";}else{$("roundInfo").textContent="Cada jugador tiene su propio tablero.";$("nextBtn").classList.add("hidden")}
+}
+function syncStatus(){setConnection(isHost?"Host · "+conns.size+" conectado(s)":"Conectado al host")}
+function doGuess(){const p=players.get(myId);if(!p||roundOver)return;if(!isHost){const word=cleanWord($("guessInput").value);if(word.length!==5){$("message").textContent="Escribe una palabra de 5 letras.";return}if(p.guesses.length>=6||p.done)return;submitGuess(p,word);return}submitGuess(p,$("guessInput").value)}
+$("createBtn").addEventListener("click",createRoom);$("joinBtn").addEventListener("click",joinRoom);$("guessBtn").addEventListener("click",doGuess);$("guessInput").addEventListener("keydown",e=>{if(e.key==="Enter")doGuess()});$("nextBtn").addEventListener("click",nextRound);$("copyBtn").addEventListener("click",()=>{const text=roomId;if(navigator.clipboard?.writeText)navigator.clipboard.writeText(text).then(()=>$("message").textContent="Código copiado: "+text).catch(()=>prompt("Copia este código:",text));else prompt("Copia este código:",text)});
+})();
+</script>
+</body>
+</html>
